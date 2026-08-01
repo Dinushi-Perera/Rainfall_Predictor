@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>RainFall Predicter</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@500;600;700;800&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+
+<!-- ============ AMBIENT SKY BACKGROUND ============ -->
+<div class="sky" id="sky" aria-hidden="true">
+  <div class="stars"></div>
+  <div class="cloud c1"></div>
+  <div class="cloud c2"></div>
+  <div class="cloud c3"></div>
+  <div class="rain-layer" id="rainLayer"></div>
+  <div class="sun-glow" id="sunGlow"></div>
+</div>
+
+<div class="page">
+
+  <!-- ============ HERO ============ -->
+  <header class="hero">
+    <div class="eyebrow">METEOROLOGICAL AI &nbsp;·&nbsp; XGBOOST MODEL</div>
+    <h1 class="title">RainFall<span class="title-accent"> Predict</span> AI</h1>
+    <p class="tagline">Feed it today's sky data. It'll tell you - cutely - whether to grab an umbrella.</p>
+  </header>
+
+  <main class="layout">
+
+    <!-- ============ FORM CARD ============ -->
+    <section class="card form-card" aria-label="Weather input form">
+      <h2 class="card-title">📋 Today's Readings</h2>
+      <p class="card-sub">All 11 fields are required - the model needs the full picture.</p>
+
+      <form id="predictForm" novalidate>
+        <div class="field-grid">
+          {% for key, spec in field_specs.items() %}
+          {% set lo, hi, label, unit = spec %}
+          <div class="field" data-field="{{ key }}">
+            <label for="{{ key }}">
+              <span class="field-icon">{{ {
+                'day':'📅','pressure':'🌡️','maxtemp':'🔺','temparature':'🌡️',
+                'mintemp':'🔻','dewpoint':'💧','humidity':'💦','cloud':'☁️',
+                'sunshine':'☀️','winddirection':'🧭','windspeed':'🌬️'
+              }[key] }}</span>
+              <span class="field-label">{{ label }}</span>
+              <span class="field-unit">{% if unit %}({{ unit }}){% endif %}</span>
+            </label>
+            <input
+              type="number"
+              step="any"
+              id="{{ key }}"
+              name="{{ key }}"
+              min="{{ lo }}"
+              max="{{ hi }}"
+              placeholder="{{ lo }} – {{ hi }}"
+              required
+              autocomplete="off"
+            >
+            <span class="field-error" id="err-{{ key }}"></span>
+          </div>
+          {% endfor %}
+        </div>
+
+        <div class="form-actions">
+          <button type="button" class="btn btn-ghost" id="fillSampleBtn">🎲 Try Sample Day</button>
+          <button type="submit" class="btn btn-primary" id="submitBtn">
+            <span class="btn-label">Predict Rainfall</span>
+            <span class="btn-spinner" aria-hidden="true"></span>
+          </button>
+        </div>
+        <p class="form-hint" id="formHint" role="status" aria-live="polite"></p>
+      </form>
+    </section>
+
+    <!-- ============ MASCOT + RESULT ============ -->
+    <section class="card mascot-card" aria-label="Prediction result">
+      <div class="mascot-stage" id="mascotStage">
+
+        <!-- Cute cloud mascot -->
+        <svg id="mascotSvg" class="mascot" viewBox="0 0 220 220" xmlns="http://www.w3.org/2000/svg">
+          <ellipse id="mascotShadow" cx="110" cy="192" rx="55" ry="8" fill="rgba(10,15,30,0.25)"/>
+          <g id="mascotBody">
+            <path d="M45 130 a35 35 0 0 1 10-68 a45 45 0 0 1 88-16 a38 38 0 0 1 32 66 a30 30 0 0 1 -8 58 h-100 a30 30 0 0 1 -22-40z"
+                  fill="#F4F7FB" stroke="#C9D4E6" stroke-width="2"/>
+            <!-- eyes -->
+            <circle id="eyeL" cx="88" cy="112" r="7" fill="#1A2238"/>
+            <circle id="eyeR" cx="132" cy="112" r="7" fill="#1A2238"/>
+            <!-- blush -->
+            <ellipse cx="72" cy="128" rx="9" ry="5" fill="#FFC0B0" opacity="0.7"/>
+            <ellipse cx="148" cy="128" rx="9" ry="5" fill="#FFC0B0" opacity="0.7"/>
+            <!-- mouth (idle) -->
+            <path id="mouth" d="M95 132 q15 14 30 0" stroke="#1A2238" stroke-width="4" fill="none" stroke-linecap="round"/>
+            <!-- sunglasses (hidden by default) -->
+            <g id="sunglasses" opacity="0">
+              <rect x="76" y="103" width="26" height="14" rx="6" fill="#1A2238"/>
+              <rect x="118" y="103" width="26" height="14" rx="6" fill="#1A2238"/>
+              <rect x="102" y="107" width="16" height="4" fill="#1A2238"/>
+            </g>
+            <!-- umbrella (hidden by default) -->
+            <g id="umbrella" opacity="0" transform="translate(150,60)">
+              <path d="M0 30 a30 30 0 0 1 60 0 z" fill="#FF8B8B" stroke="#1A2238" stroke-width="2"/>
+              <rect x="27" y="30" width="6" height="34" rx="3" fill="#1A2238"/>
+              <path d="M33 62 q8 10 -2 12" stroke="#1A2238" stroke-width="4" fill="none" stroke-linecap="round"/>
+            </g>
+          </g>
+        </svg>
+
+        <!-- floating raindrops around mascot when raining -->
+        <div class="mini-rain" id="miniRain"></div>
+        <!-- sun rays burst -->
+        <div class="sun-burst" id="sunBurst"></div>
+      </div>
+
+      <div class="result-panel" id="resultPanel">
+        <p class="result-placeholder" id="resultPlaceholder">
+          Fill in the readings and I'll take a look at the sky for you. 🔭
+        </p>
+
+        <div class="result-content" id="resultContent" hidden>
+          <div class="result-badge" id="resultBadge">Rain</div>
+          <h3 class="result-headline" id="resultHeadline">Grab your umbrella!</h3>
+          <p class="result-sub" id="resultSub">There's a strong chance of rain today.</p>
+
+          <div class="gauge-wrap">
+            <svg class="gauge" viewBox="0 0 120 70">
+              <path class="gauge-track" d="M10 65 A50 50 0 0 1 110 65" />
+              <path class="gauge-fill" id="gaugeFill" d="M10 65 A50 50 0 0 1 110 65" />
+            </svg>
+            <div class="gauge-label">
+              <span class="gauge-value" id="gaugeValue">0%</span>
+              <span class="gauge-caption">chance of rain</span>
+            </div>
+          </div>
+
+          <p class="result-note" id="resultNote"></p>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- ============ HISTORY ============ -->
+  <section class="card history-card" aria-label="Recent predictions">
+    <div class="history-head">
+      <h2 class="card-title">🕘 Recent Forecasts</h2>
+      <div class="stats-strip" id="statsStrip"></div>
+    </div>
+    <div class="history-table-wrap">
+      <table class="history-table" id="historyTable">
+        <thead>
+          <tr>
+            <th>When</th><th>Day</th><th>Temp</th><th>Humidity</th><th>Cloud</th><th>Result</th><th>Chance</th>
+          </tr>
+        </thead>
+        <tbody id="historyBody">
+          <tr><td colspan="7" class="history-empty">No forecasts logged yet — run your first prediction above.</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <footer class="footer">
+    <p>Built with Flask · XGBoost · MySQL - RainFall Predict AI 🌦️</p>
+  </footer>
+</div>
+
+<script src="{{ url_for('static', filename='js/script.js') }}"></script>
+</body>
+</html>
