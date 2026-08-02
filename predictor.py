@@ -47,6 +47,12 @@ RAW_FIELDS = [
     "humidity", "cloud", "sunshine", "winddirection", "windspeed",
 ]
 
+ENGINEERED_FIELDS = [
+    "temp_range", "dewpoint_depression", "sunshine_cloud_ratio",
+    "humidity_cloud_interaction", "temp_dewpoint_ratio", "wind_power",
+    "sunshine_humidity_diff", "day_sin", "day_cos",
+]
+
 # (min, max, label, unit) — used for both server-side validation and the
 # client-side form hints so the two never drift apart.
 FIELD_SPECS = {
@@ -74,24 +80,60 @@ def load_model():
     return _model
 
 
+def _coerce_number(value):
+    if value is None:
+        return None
+    if isinstance(value, (int, float)):
+        return float(value)
+    if isinstance(value, str):
+        text = value.strip()
+        if text == "":
+            return None
+        return float(text)
+    return float(value)
+
+
 def validate_payload(data: dict):
-    """Validate raw input dict. Returns (clean_dict, errors_dict)."""
+    """Validate incoming input. Accepts raw weather fields, engineered features,
+    or a full row-like dict from the training CSV (id/rainfall ignored)."""
+    if not isinstance(data, dict):
+        return {}, {"_payload": "Payload must be an object."}
+
     clean = {}
     errors = {}
+
+    # Collect values for any known field names present in the payload.
     for field, (lo, hi, label, unit) in FIELD_SPECS.items():
-        raw = data.get(field, None)
-        if raw is None or str(raw).strip() == "":
-            errors[field] = f"{label} is required."
+        if field not in data:
             continue
+        raw = data.get(field, None)
         try:
-            value = float(raw)
+            value = _coerce_number(raw)
         except (TypeError, ValueError):
             errors[field] = f"{label} must be a number."
+            continue
+        if value is None:
+            errors[field] = f"{label} is required."
             continue
         if not (lo <= value <= hi):
             errors[field] = f"{label} must be between {lo} and {hi}{(' ' + unit) if unit else ''}."
             continue
         clean[field] = value
+
+    # If the payload already includes the full engineered feature vector, accept it.
+    if all(field in clean for field in FEATURE_ORDER):
+        return clean, errors
+
+    # If the payload includes only raw fields, also accept it after deriving the rest.
+    if all(field in clean for field in RAW_FIELDS):
+        return clean, errors
+
+    # For a row-like payload from train.csv, we only need the raw fields.
+    for field in RAW_FIELDS:
+        if field not in clean and field in data:
+            continue
+        if field not in clean and field not in data:
+            errors[field] = f"{FIELD_SPECS[field][2]} is required."
 
     # Cross-field sanity checks (only if the individual fields already passed)
     if "mintemp" in clean and "maxtemp" in clean and clean["mintemp"] > clean["maxtemp"]:
@@ -101,27 +143,48 @@ def validate_payload(data: dict):
 
 
 def engineer_features(clean: dict) -> pd.DataFrame:
-    day = clean["day"]
-    pressure = clean["pressure"]
-    maxtemp = clean["maxtemp"]
-    temparature = clean["temparature"]
-    mintemp = clean["mintemp"]
-    dewpoint = clean["dewpoint"]
-    humidity = clean["humidity"]
-    cloud = clean["cloud"]
-    sunshine = clean["sunshine"]
-    winddirection = clean["winddirection"]
-    windspeed = clean["windspeed"]
+    if clean is None:
+        raise ValueError("No input payload provided.")
+    if not isinstance(clean, dict):
+        raise ValueError("Prediction payload must be a dictionary.")
 
-    temp_range = maxtemp - mintemp
-    dewpoint_depression = temparature - dewpoint
-    sunshine_cloud_ratio = sunshine / (cloud + 1.0)
-    humidity_cloud_interaction = (humidity * cloud) / 100.0
-    temp_dewpoint_ratio = dewpoint / temparature if temparature != 0 else 0.0
-    wind_power = windspeed ** 2
-    sunshine_humidity_diff = sunshine - humidity
-    day_sin = math.sin(2 * math.pi * day / 365.0)
-    day_cos = math.cos(2 * math.pi * day / 365.0)
+    provided = {}
+    for field in FEATURE_ORDER:
+        if field in clean:
+            try:
+                provided[field] = _coerce_number(clean[field])
+            except (TypeError, ValueError):
+                raise ValueError(f"Feature '{field}' must be numeric.")
+
+    if all(field in provided for field in FEATURE_ORDER):
+        row = provided
+        return pd.DataFrame([row], columns=FEATURE_ORDER)
+
+    missing_raw = [field for field in RAW_FIELDS if field not in provided]
+    if missing_raw:
+        raise ValueError(f"Missing required input fields: {', '.join(missing_raw)}")
+
+    day = provided["day"]
+    pressure = provided["pressure"]
+    maxtemp = provided["maxtemp"]
+    temparature = provided["temparature"]
+    mintemp = provided["mintemp"]
+    dewpoint = provided["dewpoint"]
+    humidity = provided["humidity"]
+    cloud = provided["cloud"]
+    sunshine = provided["sunshine"]
+    winddirection = provided["winddirection"]
+    windspeed = provided["windspeed"]
+
+    temp_range = provided.get("temp_range", maxtemp - mintemp)
+    dewpoint_depression = provided.get("dewpoint_depression", temparature - dewpoint)
+    sunshine_cloud_ratio = provided.get("sunshine_cloud_ratio", sunshine / (cloud + 1.0))
+    humidity_cloud_interaction = provided.get("humidity_cloud_interaction", (humidity * cloud) / 100.0)
+    temp_dewpoint_ratio = provided.get("temp_dewpoint_ratio", dewpoint / temparature if temparature != 0 else 0.0)
+    wind_power = provided.get("wind_power", windspeed ** 2)
+    sunshine_humidity_diff = provided.get("sunshine_humidity_diff", sunshine - humidity)
+    day_sin = provided.get("day_sin", math.sin(2 * math.pi * day / 365.0))
+    day_cos = provided.get("day_cos", math.cos(2 * math.pi * day / 365.0))
 
     row = {
         "day": day, "pressure": pressure, "maxtemp": maxtemp,

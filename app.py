@@ -63,6 +63,41 @@ def predict_route():
     })
 
 
+@app.route("/predict_batch", methods=["POST"])
+def predict_batch_route():
+    payload = request.get_json(silent=True) or request.form.to_dict()
+    rows = payload.get("rows") if isinstance(payload, dict) else payload
+    if rows is None:
+        rows = payload
+
+    if isinstance(rows, dict):
+        rows = [rows]
+    if not isinstance(rows, list):
+        return jsonify({"ok": False, "errors": {"_payload": "Expected a list of rows."}}), 400
+
+    results = []
+    for row in rows:
+        clean, errors = validate_payload(row)
+        if errors:
+            results.append({"ok": False, "errors": errors, "row": row})
+            continue
+        try:
+            label, probability = predict(clean)
+        except Exception as exc:  # noqa: BLE001
+            logger.exception("Batch prediction failed")
+            results.append({"ok": False, "errors": {"_model": str(exc)}, "row": row})
+            continue
+        results.append({
+            "ok": True,
+            "prediction": label,
+            "will_rain": label == "Rain",
+            "probability": round(probability * 100, 1),
+            "inputs": clean,
+        })
+
+    return jsonify({"ok": True, "results": results})
+
+
 @app.route("/history")
 def history_route():
     rows = db.get_recent_predictions(limit=10)
