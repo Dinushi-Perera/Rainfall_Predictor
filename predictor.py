@@ -102,40 +102,43 @@ def validate_payload(data: dict):
     clean = {}
     errors = {}
 
-    # Collect values for any known field names present in the payload.
-    for field, (lo, hi, label, unit) in FIELD_SPECS.items():
+    # Collect values for all recognized feature names present in the payload.
+    for field in FEATURE_ORDER:
         if field not in data:
             continue
         raw = data.get(field, None)
+        if field in FIELD_SPECS:
+            lo, hi, label, unit = FIELD_SPECS[field]
+            try:
+                value = _coerce_number(raw)
+            except (TypeError, ValueError):
+                errors[field] = f"{label} must be a number."
+                continue
+            if value is None:
+                errors[field] = f"{label} is required."
+                continue
+            if not (lo <= value <= hi):
+                errors[field] = f"{label} must be between {lo} and {hi}{(' ' + unit) if unit else ''}."
+                continue
+            clean[field] = value
+            continue
+
         try:
             value = _coerce_number(raw)
         except (TypeError, ValueError):
-            errors[field] = f"{label} must be a number."
+            errors[field] = f"{field} must be a number."
             continue
         if value is None:
-            errors[field] = f"{label} is required."
-            continue
-        if not (lo <= value <= hi):
-            errors[field] = f"{label} must be between {lo} and {hi}{(' ' + unit) if unit else ''}."
+            errors[field] = f"{field} is required."
             continue
         clean[field] = value
 
-    # If the payload already includes the full engineered feature vector, accept it.
-    if all(field in clean for field in FEATURE_ORDER):
-        return clean, errors
-
-    # If the payload includes only raw fields, also accept it after deriving the rest.
-    if all(field in clean for field in RAW_FIELDS):
-        return clean, errors
-
     # For a row-like payload from train.csv, we only need the raw fields.
     for field in RAW_FIELDS:
-        if field not in clean and field in data:
-            continue
-        if field not in clean and field not in data:
+        if field not in data:
             errors[field] = f"{FIELD_SPECS[field][2]} is required."
 
-    # Cross-field sanity checks (only if the individual fields already passed)
+    # Cross-field sanity checks (only if the individual fields already passed).
     if "mintemp" in clean and "maxtemp" in clean and clean["mintemp"] > clean["maxtemp"]:
         errors["mintemp"] = "Min temperature can't be higher than max temperature."
 
