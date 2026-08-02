@@ -1,5 +1,4 @@
-# 🌦️ RainFall Predict AI
-## RainFall Predict AI
+# 🌦️ RainFall Predictor
 
 Flask app for predicting rainfall from weather inputs using a trained XGBoost model.
 It supports the 11 raw weather fields from the web form, batch row input, MySQL-backed
