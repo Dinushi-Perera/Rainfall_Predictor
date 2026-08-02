@@ -1,12 +1,150 @@
 # 🌦️ RainFall Predict AI
+## RainFall Predict AI
+
+Flask app for predicting rainfall from weather inputs using a trained XGBoost model.
+It supports the 11 raw weather fields from the web form, batch row input, MySQL-backed
+history/statistics, local pytest coverage, and Docker-based execution.
+
+## Project Layout
+
+```text
+app.py                  Flask routes and API endpoints
+predictor.py            Payload validation, feature engineering, model prediction
+db.py                   MySQL access helpers
+config.py               Environment-driven configuration
+model/xgboost_model.joblib   Trained model artifact
+templates/index.html    Frontend UI
+static/                 CSS and browser-side JavaScript
+tests/                  Pytest suite for predictor, DB, and Flask routes
+Dockerfile              Container image definition
+docker-compose.yml      Local container run with host port mapping
+requirements.txt        Python dependencies
+schema.sql              Optional MySQL schema bootstrap
+```
+
+## Requirements
+
+- Python 3.11+
+- pip
+- Optional: Docker and Docker Compose
+- Optional: MySQL if you want prediction history and dashboard stats persisted
+
+## Local Setup
+
+Create and activate a virtual environment:
+
+```bash
+python -m venv .venv
+.venv\Scripts\Activate.ps1
+```
+
+Install dependencies:
+
+```bash
+pip install -r requirements.txt
+```
+
+## Configuration
+
+The app reads settings from environment variables or from a root-level `.env` file
+using standard `KEY=VALUE` lines.
+
+Example:
+
+MYSQL_USER=root
+MYSQL_PASSWORD=your_password
+MYSQL_DB=rainfall_db
+```
+
+If MySQL is unavailable, predictions still work. Only history and stats are skipped.
+
+## Run Locally
+
+Start the Flask app:
+
+```bash
+python app.py
+```
+
+Open:
+
+```text
+http://localhost:5000
+```
+
+## Testing
+
+Run the full test suite with the workspace virtual environment:
+
+```bash
+.venv\Scripts\python.exe -m pytest -q
+```
+
+The tests cover:
+
+- payload validation
+- feature engineering
+- model prediction flow
+- database helper behavior
+- Flask routes and JSON responses
+
+## Docker
+
+The container now runs the app through Gunicorn on `0.0.0.0:5000`, so the service
+is reachable from the host when the port is published.
+
+### Build the Image
+
+```bash
+docker build -t rainfall-predictor .
+```
+
+### Run the Container
+
+```bash
+docker run --rm -p 5000:5000 rainfall-predictor
+```
+
+Then open:
+### Run With Docker Compose
+
+```bash
+docker compose up --build
+```
+
+Docker Compose publishes the app on port 5000 automatically.
+
+## API Endpoints
+
+- `GET /` - main UI
+- `POST /predict` - single prediction
+- `POST /predict_batch` - batch prediction
+- `GET /history` - recent predictions
+- `GET /stats` - dashboard stats
+
+## Batch Prediction Example
+
+```bash
+curl -X POST http://localhost:5000/predict_batch \
+   -H "Content-Type: application/json" \
+   -d '{"rows":[{"day":1,"pressure":1000,"maxtemp":25,"temparature":23,"mintemp":20,"dewpoint":18,"humidity":70,"cloud":40,"sunshine":5,"winddirection":180,"windspeed":15}]}'
+```
+
+## Notes on the Model
+
+The model expects 20 features total: 11 raw fields and 9 engineered fields.
+`predictor.py` builds the engineered values automatically when only the raw weather
+inputs are provided.
+
+## Troubleshooting
+
+- If the app opens on `127.0.0.1:5000` inside the container but not from your browser,
+   make sure you published the port with `-p 5000:5000` or used Docker Compose.
+- If Docker Compose fails to read `.env`, keep that file in standard `KEY=VALUE` format.
+- If predictions work but history is empty, MySQL is likely unavailable or misconfigured.
 
 A Flask web app that predicts whether it will rain from weather input data using
 your trained XGBoost model. It now supports both the original form-style input
-and full row-style data from my test CSV files, so you can score all
-rows in a dataset instead of only a single 11-field example.
-
-## What's inside
-
 ```
 rainfall_predict_ai/
 ├── app.py              # Flask routes (/, /predict, /history, /stats)
@@ -24,10 +162,7 @@ rainfall_predict_ai/
     └── js/script.js                 # validation, fetch calls, animation triggers
 ```
 
-## 1. Install dependencies
 
-```bash
-python3 -m venv venv
 source venv/bin/activate          # Windows: venv\Scripts\activate
 pip install -r requirements.txt
 ```

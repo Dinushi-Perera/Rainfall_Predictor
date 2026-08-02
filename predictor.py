@@ -26,6 +26,7 @@ unaffected.
 """
 import logging
 import math
+import warnings
 
 import joblib
 import pandas as pd
@@ -76,7 +77,13 @@ def load_model():
     global _model
     if _model is None:
         logger.info("Loading XGBoost model from %s", Config.MODEL_PATH)
-        _model = joblib.load(Config.MODEL_PATH)
+        with warnings.catch_warnings():
+            warnings.filterwarnings(
+                "ignore",
+                message=r"\[.*\] WARNING: .*If you are loading a serialized model",
+                category=UserWarning,
+            )
+            _model = joblib.load(Config.MODEL_PATH)
     return _model
 
 

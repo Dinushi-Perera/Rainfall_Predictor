@@ -23,11 +23,6 @@ logger = logging.getLogger("rainfall.app")
 app = Flask(__name__)
 app.config.from_object(Config)
 
-# Warm things up at startup so the first request isn't slow.
-with app.app_context():
-    load_model()
-    db.init_db()
-
 
 @app.route("/")
 def index():
