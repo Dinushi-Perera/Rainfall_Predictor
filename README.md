@@ -187,7 +187,7 @@ export MYSQL_DB=rainfall_db
 
 On Windows (PowerShell): `$env:MYSQL_PASSWORD="your_password"`
 
-> The app is resilient to a missing/offline database — predictions will still
+> The app is resilient to a missing/offline database predictions will still
 > work and display normally, they just won't be logged to History until MySQL
 > is reachable.
 
@@ -226,15 +226,6 @@ curl -X POST http://localhost:5000/predict_batch \
 
 This is useful when you want to predict every row in a test file or a full CSV dataset.
 
-## Customizing the feature engineering
-
-The uploaded model expects 20 features in total: 11 raw inputs plus 9 engineered
-features. Their exact formulas weren't packaged with the model file, so
-`predictor.engineer_features()` uses standard meteorological definitions (temp
-range, dew-point depression, cyclical day-of-year encoding, etc.). If your
-original training notebook computed these differently, open `predictor.py` and
-edit that one function everything else (routes, UI, validation) stays the
-same.
 
 ## Deploying
 
